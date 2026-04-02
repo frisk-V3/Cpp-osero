@@ -6,6 +6,7 @@
 #include <d2d1.h>
 #include <dwrite.h>
 #include <vector>
+#include <string> // これが漏れていた
 
 #pragma comment(lib, "d2d1.lib")
 #pragma comment(lib, "dwrite.lib")
@@ -29,7 +30,7 @@ IDWriteFactory* pDWFactory = NULL;
 IDWriteTextFormat* pFormatTitle = NULL;
 IDWriteTextFormat* pFormatMenu = NULL;
 
-// --- ロジック関数 ---
+// --- ロジック ---
 bool IsValid(int r, int c, Space s) {
     if (r < 0 || r >= BOARD_SIZE || c < 0 || c >= BOARD_SIZE || board[r][c] != Space::EMPTY) return false;
     for (int dr = -1; dr <= 1; dr++) {
@@ -76,31 +77,31 @@ void ResetGame() {
 void Render(HWND hwnd) {
     if (!pRT) return;
     pRT->BeginDraw();
-    pRT->Clear(D2D1::ColorF(0.1f, 0.1f, 0.12f));
+    pRT->Clear(D2D1::ColorF(0.05f, 0.05f, 0.07f)); // より深い背景色
 
     ID2D1SolidColorBrush* pBrush = NULL;
 
     if (current_scene == Scene::TITLE) {
         pRT->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::White), &pBrush);
-        pRT->DrawTextW(L"OTHELLO ELITE", 13, pFormatTitle, D2D1::RectF(50, 100, 600, 300), pBrush);
-        pRT->DrawTextW(L"CLICK TO START", 14, pFormatMenu, D2D1::RectF(50, 300, 600, 400), pBrush);
+        pRT->DrawTextW(L"OTHELLO ELITE", 13, pFormatTitle, D2D1::RectF(50, 150, 600, 300), pBrush);
+        pRT->DrawTextW(L"CLICK TO START PROJECT", 23, pFormatMenu, D2D1::RectF(50, 320, 600, 400), pBrush);
     } else {
         for (int r = 0; r < BOARD_SIZE; r++) {
             for (int c = 0; c < BOARD_SIZE; c++) {
                 D2D1_RECT_F rect = D2D1::RectF(MARGIN + c * CELL_SIZE, MARGIN + r * CELL_SIZE, MARGIN + (c + 1) * CELL_SIZE, MARGIN + (r + 1) * CELL_SIZE);
                 
-                // ガイド：置ける場所を黄土色、それ以外を深緑
                 bool can = IsValid(r, c, current_turn);
-                pRT->CreateSolidColorBrush(can ? D2D1::ColorF(0.8f, 0.6f, 0.2f) : D2D1::ColorF(0.15f, 0.45f, 0.25f), &pBrush);
+                // ガイド：黄土色 (0.8, 0.6, 0.2) / 盤面：深緑 (0.1, 0.3, 0.15)
+                pRT->CreateSolidColorBrush(can ? D2D1::ColorF(0.8f, 0.6f, 0.2f) : D2D1::ColorF(0.1f, 0.3f, 0.15f), &pBrush);
                 pRT->FillRectangle(rect, pBrush);
                 pBrush->Release();
 
-                pRT->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0), &pBrush);
+                pRT->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0, 0.5f), &pBrush);
                 pRT->DrawRectangle(rect, pBrush, 1.0f);
                 pBrush->Release();
 
                 if (board[r][c] != Space::EMPTY) {
-                    D2D1_ELLIPSE ell = D2D1::Ellipse(D2D1::Point2F(rect.left + 32, rect.top + 32), 26, 26);
+                    D2D1_ELLIPSE ell = D2D1::Ellipse(D2D1::Point2F(rect.left + 32, rect.top + 32), 27, 27);
                     pRT->CreateSolidColorBrush(board[r][c] == Space::BLACK ? D2D1::ColorF(0, 0, 0) : D2D1::ColorF(1, 1, 1), &pBrush);
                     pRT->FillEllipse(ell, pBrush);
                     pBrush->Release();
@@ -108,15 +109,15 @@ void Render(HWND hwnd) {
             }
         }
         pRT->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::White), &pBrush);
-        std::wstring status = L"TURN: " + std::wstring(current_turn == Space::BLACK ? L"BLACK" : L"WHITE");
-        pRT->DrawTextW(status.c_str(), (UINT32)status.length(), pFormatMenu, D2D1::RectF(50, 10, 500, 50), pBrush);
+        std::wstring status = L"CURRENT TURN: " + std::wstring(current_turn == Space::BLACK ? L"BLACK" : L"WHITE");
+        pRT->DrawTextW(status.c_str(), (UINT32)status.length(), pFormatMenu, D2D1::RectF(MARGIN, 10, 500, 50), pBrush);
     }
 
     if (pBrush) pBrush->Release();
     pRT->EndDraw();
 }
 
-// --- Windows処理 ---
+// --- メイン処理 ---
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
     case WM_CREATE: {
@@ -124,8 +125,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         RECT rc; GetClientRect(hwnd, &rc);
         pFactory->CreateHwndRenderTarget(D2D1::RenderTargetProperties(), D2D1::HwndRenderTargetProperties(hwnd, D2D1::SizeU(rc.right, rc.bottom)), &pRT);
         DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), (IUnknown**)&pDWFactory);
-        pDWFactory->CreateTextFormat(L"Impact", NULL, DWRITE_FONT_WEIGHT_HEAVY, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, 72.0f, L"ja-JP", &pFormatTitle);
-        pDWFactory->CreateTextFormat(L"Segoe UI", NULL, DWRITE_FONT_WEIGHT_BOLD, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, 20.0f, L"ja-JP", &pFormatMenu);
+        pDWFactory->CreateTextFormat(L"Impact", NULL, DWRITE_FONT_WEIGHT_HEAVY, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, 80.0f, L"ja-JP", &pFormatTitle);
+        pDWFactory->CreateTextFormat(L"Consolas", NULL, DWRITE_FONT_WEIGHT_BOLD, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, 22.0f, L"ja-JP", &pFormatMenu);
         ResetGame();
         return 0;
     }
@@ -144,15 +145,22 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         return 0;
     }
     case WM_PAINT: Render(hwnd); ValidateRect(hwnd, NULL); return 0;
-    case WM_DESTROY: PostQuitMessage(0); return 0;
+    case WM_DESTROY: 
+        if (pFormatMenu) pFormatMenu->Release();
+        if (pFormatTitle) pFormatTitle->Release();
+        if (pDWFactory) pDWFactory->Release();
+        if (pRT) pRT->Release();
+        if (pFactory) pFactory->Release();
+        PostQuitMessage(0); 
+        return 0;
     }
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 
 int WINAPI wWinMain(HINSTANCE hI, HINSTANCE, PWSTR, int nS) {
-    WNDCLASSW wc = {0}; wc.lpfnWndProc = WindowProc; wc.hInstance = hI; wc.lpszClassName = L"OthelloW";
+    WNDCLASSW wc = {0}; wc.lpfnWndProc = WindowProc; wc.hInstance = hI; wc.lpszClassName = L"D2DOthelloElite";
     wc.hCursor = LoadCursor(NULL, IDC_ARROW); RegisterClassW(&wc);
-    HWND hwnd = CreateWindowExW(0, L"OthelloW", L"Direct2D Othello Elite", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 620, 680, NULL, NULL, hI, NULL);
+    HWND hwnd = CreateWindowExW(0, L"D2DOthelloElite", L"OTHELLO ELITE v3.0", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT, 620, 700, NULL, NULL, hI, NULL);
     ShowWindow(hwnd, nS);
     MSG msg; while (GetMessage(&msg, NULL, 0, 0)) { TranslateMessage(&msg); DispatchMessage(&msg); }
     return 0;
