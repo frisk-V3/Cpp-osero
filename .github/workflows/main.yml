@@ -17,8 +17,9 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Compile Othello
+        # /std:c++17 を追加して構造体束縛のエラーを解消
         run: |
-          cl.exe /O2 /MT /EHsc main.cpp /Fe:Othello_Elite.exe user32.lib gdi32.lib shell32.lib /link /SUBSYSTEM:WINDOWS
+          cl.exe /O2 /MT /EHsc /std:c++17 main.cpp /Fe:Othello_Elite.exe user32.lib gdi32.lib shell32.lib /link /SUBSYSTEM:WINDOWS
 
       - name: Upload EXE
         uses: actions/upload-artifact@v4
