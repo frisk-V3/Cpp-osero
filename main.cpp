@@ -25,12 +25,7 @@ int cpu_level = 2;
 bool vs_cpu = true;
 std::map<int, int> player_habits;
 
-// プロトタイプ宣言
-void ResetGame();
-void LoadHabit();
-void SaveHabit(int r, int c);
-
-// --- ロジック ---
+// プロトタイプ
 void ResetGame() {
     for (int i = 0; i < BOARD_SIZE; i++)
         for (int j = 0; j < BOARD_SIZE; j++) board[i][j] = Space::EMPTY;
@@ -90,73 +85,86 @@ void Flip(int r, int c, Space s) {
     }
 }
 
-// --- 描画エンジン ---
-void DrawGame(HDC hdc, HWND hwnd) {
-    // 背景塗りつぶし
-    HBRUSH hBack = CreateSolidBrush(RGB(20, 20, 20));
-    RECT client; GetClientRect(hwnd, &client);
-    FillRect(hdc, &client, hBack);
+// --- ダブルバッファリング描画 ---
+void Render(HDC hdc, HWND hwnd) {
+    RECT rect;
+    GetClientRect(hwnd, &rect);
+    int width = rect.right - rect.left;
+    int height = rect.bottom - rect.top;
+
+    // メモリDCの作成
+    HDC memDC = CreateCompatibleDC(hdc);
+    HBITMAP memBitmap = CreateCompatibleBitmap(hdc, width, height);
+    SelectObject(memDC, memBitmap);
+
+    // 背景：目に優しいダークグレー
+    HBRUSH hBack = CreateSolidBrush(RGB(30, 30, 35));
+    FillRect(memDC, &rect, hBack);
     DeleteObject(hBack);
 
     if (current_scene == Scene::TITLE) {
-        // 本気のタイトル画面
-        SetBkMode(hdc, TRANSPARENT);
-        HFONT hTitleFont = CreateFont(72, 0, 0, 0, FW_EXTRABOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Impact");
-        SelectObject(hdc, hTitleFont);
-        SetTextColor(hdc, RGB(255, 255, 255));
-        TextOut(hdc, 80, 80, L"OTHELLO ELITE", 13);
+        SetBkMode(memDC, TRANSPARENT);
+        HFONT hTitleFont = CreateFont(80, 0, 0, 0, FW_HEAVY, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Verdana");
+        SelectObject(memDC, hTitleFont);
+        SetTextColor(memDC, RGB(255, 255, 255));
+        TextOut(memDC, 50, 100, L"OTHELLO", 7);
+        TextOut(memDC, 80, 180, L"ELITE", 5);
         DeleteObject(hTitleFont);
 
-        HFONT hMenuFont = CreateFont(24, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"MS UI Gothic");
-        SelectObject(hdc, hMenuFont);
-        SetTextColor(hdc, RGB(200, 200, 200));
-        TextOut(hdc, 120, 220, L"[1] CPU EASY", 12);
-        TextOut(hdc, 120, 260, L"[2] CPU NORMAL", 14);
-        TextOut(hdc, 120, 300, L"[3] CPU HARD", 12);
-        TextOut(hdc, 120, 340, L"[P] 2-PLAYER MODE", 17);
-        DeleteObject(hMenuFont);
+        HFONT hSubFont = CreateFont(22, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Consolas");
+        SelectObject(memDC, hSubFont);
+        SetTextColor(memDC, RGB(180, 180, 180));
+        TextOut(memDC, 60, 320, L"PRESS [1-3] FOR CPU  |  PRESS [P] FOR 2P", 40);
+        DeleteObject(hSubFont);
     } else {
-        // ゲーム画面
+        // ボード描画
         for (int r = 0; r < BOARD_SIZE; r++) {
             for (int c = 0; c < BOARD_SIZE; c++) {
                 int x = BOARD_MARGIN + c * CELL_SIZE;
                 int y = BOARD_MARGIN + r * CELL_SIZE;
                 
-                // ガイド（黄土色） or 通常（深緑）
-                COLORREF color = IsValid(r, c, current_turn) ? RGB(218, 165, 32) : RGB(34, 139, 34);
-                HBRUSH hBr = CreateSolidBrush(color);
+                // ガイド：黄土色 (RGB 200, 160, 50)
+                bool can_place = IsValid(r, c, current_turn);
+                COLORREF tileColor = can_place ? RGB(200, 160, 50) : RGB(40, 100, 60);
+                HBRUSH hBr = CreateSolidBrush(tileColor);
                 RECT rct = { x, y, x + CELL_SIZE, y + CELL_SIZE };
-                FillRect(hdc, &rct, hBr);
-                FrameRect(hdc, &rct, (HBRUSH)GetStockObject(BLACK_BRUSH));
+                FillRect(memDC, &rct, hBr);
+                FrameRect(memDC, &rct, (HBRUSH)GetStockObject(BLACK_BRUSH));
                 DeleteObject(hBr);
 
                 if (board[r][c] != Space::EMPTY) {
-                    HBRUSH sBr = CreateSolidBrush(board[r][c] == Space::BLACK ? RGB(0, 0, 0) : RGB(255, 255, 255));
-                    SelectObject(hdc, sBr);
-                    Ellipse(hdc, x + 6, y + 6, x + CELL_SIZE - 6, y + CELL_SIZE - 6);
+                    HBRUSH sBr = CreateSolidBrush(board[r][c] == Space::BLACK ? RGB(10, 10, 10) : RGB(245, 245, 245));
+                    SelectObject(memDC, sBr);
+                    Ellipse(memDC, x + 8, y + 8, x + CELL_SIZE - 8, y + CELL_SIZE - 8);
                     DeleteObject(sBr);
                 }
             }
         }
-        SetTextColor(hdc, RGB(255, 255, 255));
+        SetTextColor(memDC, RGB(255, 255, 255));
         std::wstring status = L"TURN: " + std::wstring(current_turn == Space::BLACK ? L"BLACK" : L"WHITE");
-        TextOut(hdc, BOARD_MARGIN, 10, status.c_str(), (int)status.length());
+        TextOut(memDC, BOARD_MARGIN, 10, status.c_str(), (int)status.length());
     }
+
+    // 画面へ一気に転送
+    BitBlt(hdc, 0, 0, width, height, memDC, 0, 0, SRCCOPY);
+
+    // 解放
+    DeleteObject(memBitmap);
+    DeleteDC(memDC);
 }
 
-// --- ウィンドウ制御 ---
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
     case WM_CREATE: LoadHabit(); return 0;
+    case WM_ERASEBKGND: return 1; // 背景消去を無視してフラッシュを防ぐ
     case WM_CHAR:
         if (current_scene == Scene::TITLE) {
-            if (wParam == '1' || wParam == '2' || wParam == '3') {
-                cpu_level = (int)(wParam - '0'); vs_cpu = true; current_scene = Scene::GAME;
+            if (wParam >= '1' && wParam <= '3') {
+                cpu_level = (int)(wParam - '0'); vs_cpu = true; current_scene = Scene::GAME; ResetGame();
             } else if (wParam == 'p' || wParam == 'P') {
-                vs_cpu = false; current_scene = Scene::GAME;
+                vs_cpu = false; current_scene = Scene::GAME; ResetGame();
             }
-            if (current_scene == Scene::GAME) ResetGame();
-            InvalidateRect(hwnd, NULL, TRUE);
+            InvalidateRect(hwnd, NULL, FALSE);
         }
         return 0;
     case WM_LBUTTONDOWN:
@@ -167,13 +175,13 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                 Flip(r, c, current_turn);
                 if (current_turn == Space::BLACK) SaveHabit(r, c);
                 current_turn = (current_turn == Space::BLACK ? Space::WHITE : Space::BLACK);
-                InvalidateRect(hwnd, NULL, TRUE);
+                InvalidateRect(hwnd, NULL, FALSE);
                 if (vs_cpu && current_turn == Space::WHITE) PostMessage(hwnd, WM_USER + 1, 0, 0);
             }
         }
         return 0;
-    case WM_USER + 1: // CPU思考
-        Sleep(400);
+    case WM_USER + 1:
+        Sleep(300);
         {
             std::vector<std::pair<int, int>> moves;
             for(int r=0; r<BOARD_SIZE; r++) for(int c=0; c<BOARD_SIZE; c++)
@@ -183,13 +191,13 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                 Flip(moves[0].first, moves[0].second, Space::WHITE);
             }
             current_turn = Space::BLACK;
-            InvalidateRect(hwnd, NULL, TRUE);
+            InvalidateRect(hwnd, NULL, FALSE);
         }
         return 0;
     case WM_PAINT: {
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hwnd, &ps);
-        DrawGame(hdc, hwnd);
+        Render(hdc, hwnd);
         EndPaint(hwnd, &ps);
         return 0;
     }
@@ -199,12 +207,13 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 }
 
 int WINAPI wWinMain(HINSTANCE hI, HINSTANCE, PWSTR, int nS) {
-    const wchar_t CN[] = L"OthelloEliteFix";
+    const wchar_t CN[] = L"OthelloElitePro";
     WNDCLASS wc = {0}; wc.lpfnWndProc = WindowProc; wc.hInstance = hI; wc.lpszClassName = CN;
-    wc.hCursor = LoadCursor(NULL, IDC_ARROW); wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
     RegisterClass(&wc);
-    HWND hwnd = CreateWindowEx(0, CN, L"Othello Elite v2.0", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT, 600, 680, NULL, NULL, hI, NULL);
+    HWND hwnd = CreateWindowEx(0, CN, L"OTHELLO ELITE PRO", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT, 600, 650, NULL, NULL, hI, NULL);
     ShowWindow(hwnd, nS);
+    UpdateWindow(hwnd); // 起動直後に描画を強制
     MSG msg = {0};
     while (GetMessage(&msg, NULL, 0, 0)) { TranslateMessage(&msg); DispatchMessage(&msg); }
     return 0;
